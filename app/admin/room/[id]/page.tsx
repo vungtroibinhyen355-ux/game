@@ -130,43 +130,126 @@ export default function RoomDetailPage() {
     }
   }, [roomId]) // Loại bỏ router dependency để tránh re-run không cần thiết
 
-  const handleUpdateRoom = async (updatedRoom: any) => {
-    try {
-      const roomsRes = await fetch("/api/rooms")
-      if (!roomsRes.ok) {
-        throw new Error(`HTTP error! status: ${roomsRes.status}`)
+  // Debounce timer ref for input fields
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
       }
-      const allRooms = await roomsRes.json()
-      const updatedRooms = allRooms.map((r: any) => 
-        r.id === updatedRoom.id ? updatedRoom : r
-      )
-      
-      const saveRes = await fetch("/api/rooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedRooms),
-      })
-      
-      if (!saveRes.ok) {
-        const errorData = await saveRes.json().catch(() => ({}))
-        throw new Error(errorData.error || `Failed to update: ${saveRes.status}`)
-      }
-      
-      const result = await saveRes.json()
-      if (!result.success) {
-        throw new Error(result.error || "Failed to update room")
-      }
-      
-      setRoom(updatedRoom)
-      // Cache rooms để dùng khi reload
-      localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
-        rooms: updatedRooms, 
-        timestamp: Date.now() 
-      }))
-    } catch (e: any) {
-      console.error("[RoomDetail] Failed to update room:", e)
-      alert(e?.message || "Không thể cập nhật phòng. Vui lòng thử lại.")
     }
+  }, [])
+  
+  const handleUpdateRoom = async (updatedRoom: any, immediate: boolean = false) => {
+    // Update local state immediately for responsive UI
+    setRoom(updatedRoom)
+    
+    // If immediate (like button clicks), save right away
+    if (immediate) {
+      // Clear any pending debounce
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+        debounceTimerRef.current = null
+      }
+      
+      try {
+        const roomsRes = await fetch("/api/rooms")
+        if (!roomsRes.ok) {
+          throw new Error(`HTTP error! status: ${roomsRes.status}`)
+        }
+        const allRooms = await roomsRes.json()
+        const updatedRooms = allRooms.map((r: any) => 
+          r.id === updatedRoom.id ? updatedRoom : r
+        )
+        
+        const saveRes = await fetch("/api/rooms", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedRooms),
+        })
+        
+        if (!saveRes.ok) {
+          const errorData = await saveRes.json().catch(() => ({}))
+          throw new Error(errorData.error || `Failed to update: ${saveRes.status}`)
+        }
+        
+        const result = await saveRes.json()
+        if (!result.success) {
+          throw new Error(result.error || "Failed to update room")
+        }
+        
+        // Cache rooms để dùng khi reload
+        localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+          rooms: updatedRooms, 
+          timestamp: Date.now() 
+        }))
+      } catch (e: any) {
+        console.error("[RoomDetail] Failed to update room:", e)
+        alert(e?.message || "Không thể cập nhật phòng. Vui lòng thử lại.")
+        // Revert to previous room state on error
+        const roomsRes = await fetch("/api/rooms")
+        const allRooms = await roomsRes.json()
+        const currentRoom = allRooms.find((r: any) => r.id === roomId)
+        if (currentRoom) {
+          setRoom(currentRoom)
+        }
+      }
+      return
+    }
+    
+    // For input fields, debounce the save operation
+    // Clear previous timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    
+    // Set new timer to save after 1 second of no typing
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        const roomsRes = await fetch("/api/rooms")
+        if (!roomsRes.ok) {
+          throw new Error(`HTTP error! status: ${roomsRes.status}`)
+        }
+        const allRooms = await roomsRes.json()
+        const updatedRooms = allRooms.map((r: any) => 
+          r.id === updatedRoom.id ? updatedRoom : r
+        )
+        
+        const saveRes = await fetch("/api/rooms", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedRooms),
+        })
+        
+        if (!saveRes.ok) {
+          const errorData = await saveRes.json().catch(() => ({}))
+          throw new Error(errorData.error || `Failed to update: ${saveRes.status}`)
+        }
+        
+        const result = await saveRes.json()
+        if (!result.success) {
+          throw new Error(result.error || "Failed to update room")
+        }
+        
+        // Cache rooms để dùng khi reload
+        localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+          rooms: updatedRooms, 
+          timestamp: Date.now() 
+        }))
+      } catch (e: any) {
+        console.error("[RoomDetail] Failed to update room:", e)
+        // Don't show alert for debounced updates, just log error
+        // Revert to server state on error
+        const roomsRes = await fetch("/api/rooms")
+        const allRooms = await roomsRes.json()
+        const currentRoom = allRooms.find((r: any) => r.id === roomId)
+        if (currentRoom) {
+          setRoom(currentRoom)
+        }
+      }
+    }, 1000) // Wait 1 second after user stops typing
   }
 
   const handleStartGame = () => {
@@ -176,7 +259,7 @@ export default function RoomDetailPage() {
       return
     }
     const updatedRoom = { ...room, gameStarted: true }
-    handleUpdateRoom(updatedRoom)
+    handleUpdateRoom(updatedRoom, true) // Immediate save for button actions
   }
 
   const handleStopGame = () => {
@@ -193,7 +276,7 @@ export default function RoomDetailPage() {
       teams: [],
       scores: {},
     }
-    handleUpdateRoom(updatedRoom)
+    handleUpdateRoom(updatedRoom, true) // Immediate save for button actions
     
     // Show success message
     const successMsg = document.createElement('div')
@@ -211,12 +294,12 @@ export default function RoomDetailPage() {
   const handleNextQuestion = () => {
     if (!room) return
     const updatedRoom = { ...room, nextQuestionTrigger: Date.now() }
-    handleUpdateRoom(updatedRoom)
+    handleUpdateRoom(updatedRoom, true) // Immediate save for button actions
   }
 
   const handleQuestionsUpdate = (updatedQuestions: any[]) => {
     const updated = { ...room, questions: updatedQuestions }
-    handleUpdateRoom(updated)
+    handleUpdateRoom(updated, true) // Immediate save when questions are saved
   }
 
   const handleScoreUpdate = async (team: string, scoreIncrement: number) => {
@@ -256,7 +339,7 @@ export default function RoomDetailPage() {
         scores: updatedScores
       }
       
-      await handleUpdateRoom(updatedRoom)
+      await handleUpdateRoom(updatedRoom, true) // Immediate save for score updates
     } catch (e) {
       console.error("[Admin] Failed to update score:", e)
       alert("Không thể cập nhật điểm. Vui lòng thử lại.")
@@ -323,7 +406,7 @@ export default function RoomDetailPage() {
         answerHistory: updatedAnswerHistory
       }
       
-      await handleUpdateRoom(updatedRoom)
+      await handleUpdateRoom(updatedRoom, true) // Immediate save for batch score updates
     } catch (e) {
       console.error("[Admin] Failed to batch update scores:", e)
       alert("Không thể cập nhật điểm. Vui lòng thử lại.")
@@ -459,7 +542,7 @@ export default function RoomDetailPage() {
                     value={room.thinkingTime ?? 20}
                     onChange={(e) => {
                       const updatedRoom = { ...room, thinkingTime: parseInt(e.target.value) || 0 }
-                      handleUpdateRoom(updatedRoom)
+                      handleUpdateRoom(updatedRoom, false) // Debounced save for input fields
                     }}
                     min="0"
                     className="w-full px-4 py-3 rounded-lg bg-background border-2 border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-lg font-semibold"
@@ -474,7 +557,7 @@ export default function RoomDetailPage() {
                     value={room.resultTime ?? 5}
                     onChange={(e) => {
                       const updatedRoom = { ...room, resultTime: parseInt(e.target.value) || 0 }
-                      handleUpdateRoom(updatedRoom)
+                      handleUpdateRoom(updatedRoom, false) // Debounced save for input fields
                     }}
                     min="0"
                     className="w-full px-4 py-3 rounded-lg bg-background border-2 border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-lg font-semibold"
@@ -494,7 +577,7 @@ export default function RoomDetailPage() {
                 value={room.lesson || ""}
                 onChange={(e) => {
                   const updatedRoom = { ...room, lesson: e.target.value }
-                  handleUpdateRoom(updatedRoom)
+                  handleUpdateRoom(updatedRoom, false) // Debounced save for input fields
                 }}
                 placeholder="Nhập bài học tổng hợp cần rút ra sau khi hoàn thành tất cả câu hỏi..."
                 className="w-full px-4 py-3 rounded-lg bg-background border-2 border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary min-h-[120px]"

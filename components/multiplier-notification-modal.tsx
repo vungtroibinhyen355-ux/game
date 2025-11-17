@@ -51,36 +51,36 @@ export default function MultiplierNotificationModal({
   }, []) // Chỉ chạy một lần khi mount
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-warning/20 via-accent/20 to-primary/20 flex items-center justify-center z-[60] animate-fade-in-scale">
+    <div className="fixed inset-0 bg-gradient-to-br from-warning/20 via-accent/20 to-primary/20 flex items-center justify-center z-[60] animate-fade-in-scale p-2 sm:p-4">
       {/* Full screen overlay */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       
       {/* Content */}
-      <div className="relative bg-card rounded-3xl border-4 border-warning shadow-2xl p-12 max-w-2xl w-full mx-4 text-center animate-bounce-pop">
-        <div className="text-8xl mb-6 animate-bounce">⚡</div>
-        <h2 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-warning via-accent to-primary mb-6">
+      <div className="relative bg-card rounded-xl sm:rounded-2xl md:rounded-3xl border-2 sm:border-4 border-warning shadow-2xl p-4 sm:p-6 md:p-8 lg:p-12 max-w-2xl w-full mx-2 sm:mx-4 text-center animate-bounce-pop">
+        <div className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl mb-3 sm:mb-4 md:mb-6 animate-bounce">⚡</div>
+        <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-warning via-accent to-primary mb-3 sm:mb-4 md:mb-6">
           Câu hỏi đặc biệt!
         </h2>
-        <div className="mb-8">
-          <p className="text-2xl font-bold text-foreground mb-4">
+        <div className="mb-4 sm:mb-6 md:mb-8">
+          <p className="text-lg sm:text-xl md:text-2xl font-bold text-foreground mb-2 sm:mb-3 md:mb-4">
             Câu {questionNumber}/{totalQuestions}
           </p>
-          <div className="inline-block px-8 py-4 rounded-2xl bg-warning/30 border-4 border-warning shadow-lg">
-            <p className="text-5xl font-bold text-warning">
+          <div className="inline-block px-4 sm:px-6 md:px-8 py-2 sm:py-3 md:py-4 rounded-xl sm:rounded-2xl bg-warning/30 border-2 sm:border-4 border-warning shadow-lg">
+            <p className="text-3xl sm:text-4xl md:text-5xl font-bold text-warning">
               x{multiplier} Điểm
             </p>
-            <p className="text-xl text-warning/80 mt-2">15 điểm x2 = 30 điểm</p>
+            <p className="text-sm sm:text-base md:text-lg lg:text-xl text-warning/80 mt-1 sm:mt-2">15 điểm x2 = 30 điểm</p>
           </div>
         </div>
-        <p className="text-xl text-foreground mb-8 font-medium">
+        <p className="text-base sm:text-lg md:text-xl text-foreground mb-4 sm:mb-6 md:mb-8 font-medium">
           Câu hỏi này có hệ số nhân điểm {multiplier}x!
         </p>
         
         {/* Countdown với animation màu xanh chạy từ từ */}
-        <div className="mb-6">
-          <div className="relative inline-flex items-center justify-center w-32 h-32">
+        <div className="mb-4 sm:mb-6">
+          <div className="relative inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 lg:w-32 lg:h-32">
             {/* Background circle với animation */}
-            <svg className="absolute inset-0 w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
+            <svg className="absolute inset-0 w-full h-full transform -rotate-90" viewBox="0 0 120 120">
               {/* Background circle */}
               <circle
                 cx="60"
@@ -109,14 +109,14 @@ export default function MultiplierNotificationModal({
             </svg>
             {/* Countdown number */}
             <div className="relative z-10">
-              <span className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 via-green-500 to-green-600">
+              <span className="text-3xl sm:text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 via-green-500 to-green-600">
                 {countdown}
               </span>
             </div>
           </div>
         </div>
         
-        <p className="text-muted-foreground text-lg">
+        <p className="text-sm sm:text-base md:text-lg text-muted-foreground">
           Tự động bắt đầu sau <span className="font-bold text-green-500">{countdown}</span> giây...
         </p>
       </div>
