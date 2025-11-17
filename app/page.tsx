@@ -1,0 +1,386 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import AdminDashboard from "@/components/admin-dashboard"
+import PlayerLobby from "@/components/player-lobby"
+import GameBoard from "@/components/game-board"
+import WaitingRoom from "@/components/waiting-room"
+import LoginPage from "@/components/login-page"
+
+export default function Home() {
+  const [appMode, setAppMode] = useState<"role" | "login" | "admin" | "player" | "waiting" | "game">("role")
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [rooms, setRooms] = useState<any[]>([])
+  const [currentRoom, setCurrentRoom] = useState<any>(null)
+  const [playerTeam, setPlayerTeam] = useState<string>("")
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Load session from localStorage
+        const savedAuth = localStorage.getItem("teacher_session")
+        if (savedAuth) {
+          try {
+            const session = JSON.parse(savedAuth)
+            if (session) {
+              setIsAuthenticated(true)
+              setAppMode("admin")
+            }
+          } catch (e) {
+            // Invalid session, clear it
+            localStorage.removeItem("teacher_session")
+          }
+        }
+
+        // Load rooms from JSON
+        const roomsRes = await fetch("/api/rooms")
+        const parsedRooms = await roomsRes.json()
+        if (Array.isArray(parsedRooms)) {
+          setRooms(parsedRooms)
+        }
+
+        const urlParams = new URLSearchParams(window.location.search)
+        const roomIdFromURL = urlParams.get("roomId")
+        
+        if (roomIdFromURL && !savedAuth) {
+          // Check if room exists
+          const targetRoom = parsedRooms.find((r: any) => r.id === roomIdFromURL)
+          if (targetRoom) {
+            // Kiểm tra xem người chơi đã join room chưa từ localStorage
+            const savedPlayerInfo = localStorage.getItem(`player_room_${roomIdFromURL}`)
+            if (savedPlayerInfo) {
+              try {
+                const playerInfo = JSON.parse(savedPlayerInfo)
+                const teamName = playerInfo.teamName
+                
+                // Kiểm tra xem team còn trong room không (có thể bị xóa khi dừng game)
+                const playerStillInRoom = (targetRoom.teams || []).some((t: any) => {
+                  const name = typeof t === "string" ? t : t.name
+                  return name === teamName
+                })
+                
+                if (playerStillInRoom) {
+                  // Người chơi vẫn còn trong room, vào waiting room
+                  setCurrentRoom(targetRoom)
+                  setPlayerTeam(teamName)
+                  // Chỉ vào game nếu game đã bắt đầu, nếu không thì vào waiting room
+                  setAppMode(targetRoom.gameStarted ? "game" : "waiting")
+                } else {
+                  // Người chơi không còn trong room (bị xóa khi dừng game), xóa localStorage và vào player lobby
+                  localStorage.removeItem(`player_room_${roomIdFromURL}`)
+                  setAppMode("player")
+                }
+              } catch (e) {
+                // Invalid localStorage data, vào player lobby
+                setAppMode("player")
+              }
+            } else {
+              // Chưa join, vào player lobby để join
+              setAppMode("player")
+            }
+          } else {
+            setAppMode("player")
+          }
+        }
+      } catch (e) {
+        console.error("[v0] Failed to load data:", e)
+      }
+    }
+    loadData()
+  }, [])
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const roomsRes = await fetch("/api/rooms")
+        const parsedRooms = await roomsRes.json()
+        if (Array.isArray(parsedRooms)) {
+          setRooms(parsedRooms)
+          
+          // Update current room if in waiting or game mode
+          if (currentRoom) {
+            const updatedRoom = parsedRooms.find((r: any) => r.id === currentRoom.id)
+            if (updatedRoom) {
+              setCurrentRoom(updatedRoom)
+              
+              // Kiểm tra xem người chơi còn trong teams không (có thể bị xóa khi dừng game)
+              const playerStillInRoom = (updatedRoom.teams || []).some((t: any) => {
+                const teamName = typeof t === "string" ? t : t.name
+                return teamName === playerTeam
+              })
+              
+              // Nếu người chơi không còn trong room (bị xóa khi dừng game), quay về player lobby
+              if (!playerStillInRoom && playerTeam && (appMode === "waiting" || appMode === "game")) {
+                // Xóa localStorage
+                localStorage.removeItem(`player_room_${updatedRoom.id}`)
+                setAppMode("player")
+                setCurrentRoom(null)
+                setPlayerTeam("")
+                return
+              }
+              
+              // Nếu game đã dừng và đang ở game mode, quay về waiting room
+              if (!updatedRoom.gameStarted && appMode === "game") {
+                setAppMode("waiting")
+              }
+              
+              // Nếu game started và đang ở waiting mode, chuyển sang game mode
+              if (updatedRoom.gameStarted && appMode === "waiting") {
+                setAppMode("game")
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[v0] Failed to load rooms:", e)
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [currentRoom, appMode])
+  
+  // Listen for game started event
+  useEffect(() => {
+    const handleGameStarted = (event: CustomEvent) => {
+      if (appMode === "waiting" && currentRoom?.id === event.detail.roomId) {
+        setAppMode("game")
+      }
+    }
+    
+    window.addEventListener('gameStarted', handleGameStarted as EventListener)
+    return () => window.removeEventListener('gameStarted', handleGameStarted as EventListener)
+  }, [appMode, currentRoom])
+
+  const handleSelectRole = (role: "teacher" | "student") => {
+    if (role === "teacher") {
+      setAppMode("login")
+    } else {
+      setAppMode("player")
+    }
+  }
+
+  const handleLogin = () => {
+    setIsAuthenticated(true)
+    setAppMode("admin")
+    // Save session to localStorage instead of JSON
+    localStorage.setItem("teacher_session", JSON.stringify({ loginTime: new Date().toISOString() }))
+  }
+
+  const handleSkipLogin = () => {
+    setAppMode("player")
+  }
+
+  const handleCreateRoom = async (roomData: any) => {
+    const newRoom = {
+      id: Math.random().toString(36).substr(2, 9),
+      ...roomData,
+      createdAt: new Date(),
+      questions: [],
+      teams: [],
+      gameStarted: false, // Game starts as not started
+      lesson: "", // Bài học rút ra tổng hợp
+      thinkingTime: 20, // Thời gian suy nghĩ mặc định
+      resultTime: 5, // Thời gian kết quả mặc định (0 = chờ admin click)
+      nextQuestionTrigger: null, // Timestamp when admin clicks next question
+    }
+    
+    try {
+      const roomsRes = await fetch("/api/rooms")
+      const allRooms = await roomsRes.json()
+      const updatedRooms = [...allRooms, newRoom]
+      
+      await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedRooms),
+      })
+      
+      setRooms(updatedRooms)
+      setCurrentRoom(newRoom)
+    } catch (e) {
+      console.error("[v0] Failed to create room:", e)
+      alert("Không thể tạo phòng. Vui lòng thử lại.")
+    }
+  }
+
+  const handleDeleteRoom = async (roomId: string) => {
+    try {
+      const roomsRes = await fetch("/api/rooms")
+      const allRooms = await roomsRes.json()
+      const updatedRooms = allRooms.filter((r: any) => r.id !== roomId)
+      
+      await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedRooms),
+      })
+      
+      setRooms(updatedRooms)
+    } catch (e) {
+      console.error("[v0] Failed to delete room:", e)
+      alert("Không thể xóa phòng. Vui lòng thử lại.")
+    }
+  }
+
+  const handleJoinRoom = async (roomId: string, teamName: string) => {
+    try {
+      const roomsRes = await fetch("/api/rooms")
+      const allRooms = await roomsRes.json()
+      const room = allRooms.find((r: any) => r.id === roomId)
+      
+      if (room) {
+        // Check for duplicate team name (case-insensitive)
+        const existingTeamIndex = (room.teams || []).findIndex((t: any) => {
+          const name = typeof t === "string" ? t : t.name
+          return name.toLowerCase().trim() === teamName.toLowerCase().trim()
+        })
+
+        if (existingTeamIndex === -1) {
+          const newTeam = { name: teamName.trim(), score: 0, isVirtual: false }
+          const updatedRoom = {
+            ...room,
+            teams: [...(room.teams || []), newTeam],
+          }
+          const updatedRooms = allRooms.map((r: any) => (r.id === roomId ? updatedRoom : r))
+          
+          await fetch("/api/rooms", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatedRooms),
+          })
+          
+          setRooms(updatedRooms)
+          setCurrentRoom(updatedRoom)
+          setPlayerTeam(teamName.trim())
+          
+          // Lưu thông tin vào localStorage để có thể khôi phục khi reload
+          localStorage.setItem(`player_room_${roomId}`, JSON.stringify({
+            roomId,
+            teamName: teamName.trim(),
+            joinedAt: new Date().toISOString()
+          }))
+          
+          // Go to waiting room first, not directly to game
+          setAppMode("waiting")
+        } else {
+          alert("Tên đội đã tồn tại trong phòng này. Vui lòng chọn tên khác.")
+        }
+      } else {
+        alert("Không tìm thấy phòng")
+      }
+    } catch (e) {
+      console.error("[v0] Failed to join room:", e)
+      alert("Không thể tham gia phòng. Vui lòng thử lại.")
+    }
+  }
+
+  const handleUpdateRoom = async (updatedRoom: any) => {
+    try {
+      const roomsRes = await fetch("/api/rooms")
+      const allRooms = await roomsRes.json()
+      const updatedRooms = allRooms.map((r: any) => (r.id === updatedRoom.id ? updatedRoom : r))
+      
+      await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedRooms),
+      })
+      
+      setRooms(updatedRooms)
+      setCurrentRoom(updatedRoom)
+    } catch (e) {
+      console.error("[v0] Failed to update room:", e)
+    }
+  }
+
+  const handleLogout = () => {
+    setIsAuthenticated(false)
+    setAppMode("role")
+    // Remove session from localStorage
+    localStorage.removeItem("teacher_session")
+  }
+
+  if (appMode === "role") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary via-background to-secondary flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="bg-card rounded-3xl border border-border p-8 shadow-2xl">
+            <div className="text-center mb-8">
+              <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent mb-2">
+                Quiz Master
+              </h1>
+              <p className="text-muted-foreground text-lg">Chọn vai trò của bạn</p>
+            </div>
+
+            <div className="space-y-4">
+              <button
+                onClick={() => handleSelectRole("teacher")}
+                className="w-full p-6 rounded-2xl bg-primary/10 border-2 border-primary hover:bg-primary/20 transition-all"
+              >
+                <span className="text-4xl block mb-2">👨‍🏫</span>
+                <p className="font-bold text-lg text-foreground">Giáo viên</p>
+                <p className="text-sm text-muted-foreground">Tạo và quản lý phòng quiz</p>
+              </button>
+
+              <button
+                onClick={() => handleSelectRole("student")}
+                className="w-full p-6 rounded-2xl bg-secondary/10 border-2 border-secondary hover:bg-secondary/20 transition-all"
+              >
+                <span className="text-4xl block mb-2">👥</span>
+                <p className="font-bold text-lg text-foreground">Học sinh</p>
+                <p className="text-sm text-muted-foreground">Tham gia và chơi quiz</p>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (appMode === "login") {
+    return <LoginPage onLogin={handleLogin} onBack={() => setAppMode("role")} />
+  }
+
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-secondary/5">
+      {appMode === "admin" && (
+        <AdminDashboard
+          rooms={rooms}
+          onCreateRoom={handleCreateRoom}
+          onDeleteRoom={handleDeleteRoom}
+          onUpdateRoom={handleUpdateRoom}
+          onLogout={handleLogout}
+          onBack={() => setAppMode("role")}
+        />
+      )}
+
+      {appMode === "player" && (
+        <PlayerLobby rooms={rooms} onJoinRoom={handleJoinRoom} onBack={() => setAppMode("role")} />
+      )}
+
+      {appMode === "waiting" && currentRoom && (
+        <WaitingRoom
+          room={currentRoom}
+          playerTeam={playerTeam}
+          onExit={() => {
+            setAppMode("player")
+            setCurrentRoom(null)
+            setPlayerTeam("")
+          }}
+        />
+      )}
+
+      {appMode === "game" && currentRoom && (
+        <GameBoard
+          room={currentRoom}
+          playerTeam={playerTeam}
+          onUpdateRoom={handleUpdateRoom}
+          onExit={() => {
+            setAppMode("player")
+            setCurrentRoom(null)
+            setPlayerTeam("")
+          }}
+        />
+      )}
+    </main>
+  )
+}
