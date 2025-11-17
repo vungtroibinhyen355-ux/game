@@ -8,18 +8,33 @@ export default function AdminPage() {
   const router = useRouter()
   const [rooms, setRooms] = useState<any[]>([])
 
+  // Check authentication once on mount
   useEffect(() => {
-    // Check authentication
     const savedAuth = localStorage.getItem("teacher_session")
     if (!savedAuth) {
       router.push("/")
       return
+    }
+  }, []) // Chỉ check một lần khi mount
+
+  useEffect(() => {
+    // Double check authentication before starting polling
+    const savedAuth = localStorage.getItem("teacher_session")
+    if (!savedAuth) {
+      return // Đã được handle ở useEffect trên
     }
 
     let isMounted = true
 
     const loadRooms = async () => {
       if (!isMounted) return
+      
+      // Check authentication again before each load
+      const currentAuth = localStorage.getItem("teacher_session")
+      if (!currentAuth) {
+        // Auth lost, stop polling but don't redirect here (let first useEffect handle it)
+        return
+      }
       
       // Load từ cache trước để hiển thị ngay
       const cachedRooms = localStorage.getItem("quiz_rooms_cache")
@@ -37,10 +52,22 @@ export default function AdminPage() {
       try {
         const roomsRes = await fetch("/api/rooms")
         if (!roomsRes.ok) {
-          return
+          console.warn("[Admin] API returned non-OK status:", roomsRes.status)
+          return // Giữ nguyên cached data
         }
         const parsedRooms = await roomsRes.json()
         if (Array.isArray(parsedRooms) && isMounted) {
+          // Chỉ update nếu có data hợp lệ (không phải empty array do server reset)
+          // Hoặc nếu cached data cũng empty thì update
+          const cachedRooms = localStorage.getItem("quiz_rooms_cache")
+          const hasCachedData = cachedRooms && JSON.parse(cachedRooms).rooms?.length > 0
+          
+          // Nếu server trả về empty nhưng có cached data, không overwrite
+          if (parsedRooms.length === 0 && hasCachedData) {
+            console.warn("[Admin] Server returned empty array, keeping cached data")
+            return
+          }
+          
           setRooms(parsedRooms)
           // Cache rooms để dùng khi reload
           localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
@@ -64,7 +91,7 @@ export default function AdminPage() {
       isMounted = false
       clearInterval(interval)
     }
-  }, [router])
+  }, []) // Không có router dependency để tránh re-run không cần thiết
 
   const handleCreateRoom = async (roomData: any) => {
     const newRoom = {

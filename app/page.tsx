@@ -128,8 +128,26 @@ export default function Home() {
         // Load rooms from API và sync với cache
         try {
           const roomsRes = await fetch("/api/rooms")
+          if (!roomsRes.ok) {
+            console.warn("[v0] API returned non-OK status:", roomsRes.status)
+            // Giữ nguyên cached data
+            if (parsedRooms.length > 0) {
+              console.log("[v0] Using cached rooms data due to API error")
+            }
+            return
+          }
+          
           const apiRooms = await roomsRes.json()
           if (Array.isArray(apiRooms)) {
+            // Chỉ update nếu có data hợp lệ hoặc cached data cũng empty
+            const hasCachedData = parsedRooms.length > 0
+            
+            // Nếu server trả về empty nhưng có cached data, không overwrite
+            if (apiRooms.length === 0 && hasCachedData) {
+              console.warn("[v0] Server returned empty array, keeping cached data")
+              return
+            }
+            
             setRooms(apiRooms)
             // Cache rooms để dùng khi reload
             localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
@@ -141,7 +159,7 @@ export default function Home() {
           console.error("[v0] Failed to load rooms:", e)
           // Nếu API fail và có cached data, dùng cached data
           if (parsedRooms.length > 0) {
-            console.log("[v0] Using cached rooms data")
+            console.log("[v0] Using cached rooms data due to network error")
           }
         }
       } catch (e) {
@@ -199,6 +217,16 @@ export default function Home() {
         const parsedRooms = await roomsRes.json()
         if (!Array.isArray(parsedRooms)) {
           console.error("[v0] Invalid rooms data format")
+          return
+        }
+        
+        // Chỉ update nếu có data hợp lệ hoặc cached data cũng empty
+        const cachedRooms = localStorage.getItem("quiz_rooms_cache")
+        const hasCachedData = cachedRooms && JSON.parse(cachedRooms).rooms?.length > 0
+        
+        // Nếu server trả về empty nhưng có cached data, không overwrite
+        if (parsedRooms.length === 0 && hasCachedData) {
+          console.warn("[v0] Server returned empty array during polling, keeping cached data")
           return
         }
         

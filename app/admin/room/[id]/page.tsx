@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
@@ -22,12 +22,36 @@ export default function RoomDetailPage() {
   const [showScoreManager, setShowScoreManager] = useState(false)
   const [showVirtualTeamManager, setShowVirtualTeamManager] = useState(false)
 
-  // Real-time polling for room updates
+  // Check authentication once on mount
   useEffect(() => {
+    const savedAuth = localStorage.getItem("teacher_session")
+    if (!savedAuth) {
+      router.push("/admin")
+      return
+    }
+  }, []) // Chỉ check một lần khi mount
+
+  // Real-time polling for room updates
+  const redirectTriggeredRef = useRef(false) // Prevent multiple redirects
+  
+  useEffect(() => {
+    // Double check authentication
+    const savedAuth = localStorage.getItem("teacher_session")
+    if (!savedAuth) {
+      return // Đã được handle ở useEffect trên
+    }
+
     let isMounted = true
     
     const loadRoom = async () => {
-      if (!isMounted) return
+      if (!isMounted || redirectTriggeredRef.current) return
+      
+      // Check authentication before each load
+      const currentAuth = localStorage.getItem("teacher_session")
+      if (!currentAuth) {
+        // Auth lost, stop polling
+        return
+      }
       
       // Load từ cache trước để hiển thị ngay
       const cachedRooms = localStorage.getItem("quiz_rooms_cache")
@@ -49,9 +73,21 @@ export default function RoomDetailPage() {
       try {
         const roomsRes = await fetch("/api/rooms")
         if (!roomsRes.ok) {
-          return
+          console.warn("[RoomDetail] API returned non-OK status:", roomsRes.status)
+          return // Giữ nguyên cached room
         }
         const allRooms = await roomsRes.json()
+        
+        // Kiểm tra xem có cached data không
+        const cachedRooms = localStorage.getItem("quiz_rooms_cache")
+        const hasCachedData = cachedRooms && JSON.parse(cachedRooms).rooms?.length > 0
+        
+        // Nếu server trả về empty nhưng có cached data, không overwrite và không redirect
+        if (allRooms.length === 0 && hasCachedData) {
+          console.warn("[RoomDetail] Server returned empty array, keeping cached room")
+          return
+        }
+        
         const foundRoom = allRooms.find((r: any) => r.id === roomId)
         
         if (foundRoom && isMounted) {
@@ -62,9 +98,17 @@ export default function RoomDetailPage() {
             rooms: allRooms, 
             timestamp: Date.now() 
           }))
-        } else if (!foundRoom && isMounted) {
-          // Room not found, redirect back
-          router.push("/admin")
+        } else if (!foundRoom && isMounted && !redirectTriggeredRef.current) {
+          // Chỉ redirect nếu không có cached room và chưa redirect
+          const cachedRooms = localStorage.getItem("quiz_rooms_cache")
+          const cached = cachedRooms ? JSON.parse(cachedRooms) : null
+          const cachedRoom = cached?.rooms?.find((r: any) => r.id === roomId)
+          
+          // Nếu không có cached room, mới redirect
+          if (!cachedRoom) {
+            redirectTriggeredRef.current = true
+            router.push("/admin")
+          }
         }
       } catch (e) {
         console.error("[RoomDetail] Failed to load room:", e)
@@ -84,7 +128,7 @@ export default function RoomDetailPage() {
       isMounted = false
       clearInterval(interval)
     }
-  }, [roomId, router])
+  }, [roomId]) // Loại bỏ router dependency để tránh re-run không cần thiết
 
   const handleUpdateRoom = async (updatedRoom: any) => {
     try {
@@ -310,38 +354,38 @@ export default function RoomDetailPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-secondary/5">
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-6">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <Button
             onClick={() => router.push("/admin")}
             variant="outline"
-            className="mb-4"
+            className="mb-3 sm:mb-4 text-sm sm:text-base"
           >
             ← Quay lại danh sách phòng
           </Button>
           
-          <div className="bg-gradient-to-r from-primary/20 via-secondary/20 to-accent/20 rounded-2xl border border-primary/30 p-8">
-            <div className="flex items-start justify-between gap-6 flex-wrap">
+          <div className="bg-gradient-to-r from-primary/20 via-secondary/20 to-accent/20 rounded-xl sm:rounded-2xl border border-primary/30 p-4 sm:p-6 md:p-8">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6">
               <div className="flex-1 min-w-0">
-                <h1 className="text-4xl font-bold text-foreground mb-3">{room.name}</h1>
-                <p className="text-muted-foreground text-xl mb-6">Chủ đề: {room.topic}</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-card/90 px-6 py-4 rounded-xl border border-border backdrop-blur-sm">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-2 sm:mb-3">{room.name}</h1>
+                <p className="text-muted-foreground text-base sm:text-lg md:text-xl mb-4 sm:mb-6">Chủ đề: {room.topic}</p>
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
+                  <div className="bg-card/90 px-3 sm:px-4 md:px-6 py-3 sm:py-4 rounded-lg sm:rounded-xl border border-border backdrop-blur-sm">
                     <p className="text-xs text-muted-foreground mb-1">ID phòng</p>
-                    <p className="font-mono text-sm font-bold text-foreground break-all">{room.id}</p>
+                    <p className="font-mono text-xs sm:text-sm font-bold text-foreground break-all">{room.id}</p>
                   </div>
-                  <div className="bg-card/90 px-6 py-4 rounded-xl border border-border backdrop-blur-sm">
+                  <div className="bg-card/90 px-3 sm:px-4 md:px-6 py-3 sm:py-4 rounded-lg sm:rounded-xl border border-border backdrop-blur-sm">
                     <p className="text-xs text-muted-foreground mb-1">Câu hỏi</p>
-                    <p className="text-2xl font-bold text-primary">{room.questions?.length || 0}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-primary">{room.questions?.length || 0}</p>
                   </div>
-                  <div className="bg-card/90 px-6 py-4 rounded-xl border border-border backdrop-blur-sm">
+                  <div className="bg-card/90 px-3 sm:px-4 md:px-6 py-3 sm:py-4 rounded-lg sm:rounded-xl border border-border backdrop-blur-sm">
                     <p className="text-xs text-muted-foreground mb-1">Đội tham gia</p>
-                    <p className="text-2xl font-bold text-secondary">{room.teams?.length || 0}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-secondary">{room.teams?.length || 0}</p>
                   </div>
-                  <div className="bg-card/90 px-6 py-4 rounded-xl border border-border backdrop-blur-sm">
+                  <div className="bg-card/90 px-3 sm:px-4 md:px-6 py-3 sm:py-4 rounded-lg sm:rounded-xl border border-border backdrop-blur-sm">
                     <p className="text-xs text-muted-foreground mb-1">Trạng thái</p>
-                    <p className="text-lg font-bold">
+                    <p className="text-sm sm:text-base md:text-lg font-bold">
                       {room.gameStarted ? (
                         <span className="text-success flex items-center gap-2">
                           <span className="animate-pulse">🎮</span> Đang chơi
@@ -363,27 +407,27 @@ export default function RoomDetailPage() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid lg:grid-cols-3 gap-6 mb-6">
+        <div className="grid lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
           {/* Left Column - Game Control */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             {/* Game Control Card */}
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-lg">
-              <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-2">
+            <div className="bg-card rounded-xl sm:rounded-2xl border border-border p-4 sm:p-6 shadow-lg">
+              <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-4 sm:mb-6 flex items-center gap-2">
                 🎮 Điều khiển game
               </h2>
-              <div className="space-y-4">
-                <div className="flex gap-3">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                   {room.gameStarted ? (
                     <Button
                       onClick={handleStopGame}
-                      className="flex-1 bg-destructive hover:bg-destructive/90 text-white font-semibold py-6 text-lg"
+                      className="flex-1 bg-destructive hover:bg-destructive/90 text-white font-semibold py-4 sm:py-6 text-base sm:text-lg"
                     >
                       ⏸️ Dừng game
                     </Button>
                   ) : (
                     <Button
                       onClick={handleStartGame}
-                      className="flex-1 bg-gradient-to-r from-success to-success/80 hover:shadow-lg text-white font-semibold py-6 text-lg"
+                      className="flex-1 bg-gradient-to-r from-success to-success/80 hover:shadow-lg text-white font-semibold py-4 sm:py-6 text-base sm:text-lg"
                       disabled={(room.questions?.length || 0) === 0}
                     >
                       ▶️ Bắt đầu game
@@ -394,7 +438,7 @@ export default function RoomDetailPage() {
                 {room.gameStarted && (
                   <Button
                     onClick={handleNextQuestion}
-                    className="w-full bg-gradient-to-r from-primary to-secondary hover:shadow-lg text-white font-semibold py-6 text-lg"
+                    className="w-full bg-gradient-to-r from-primary to-secondary hover:shadow-lg text-white font-semibold py-4 sm:py-6 text-base sm:text-lg"
                   >
                     ⏭️ Tiếp tục câu hỏi tiếp theo
                   </Button>
