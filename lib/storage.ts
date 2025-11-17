@@ -71,30 +71,50 @@ function initializeStorage() {
 
 // Read data
 export function readData() {
-  initializeStorage()
-  
-  const isReadOnly = isReadOnlyFilesystem()
-  
-  if (isReadOnly || globalStorage.has(STORAGE_KEY)) {
-    // Use in-memory storage
-    return globalStorage.get(STORAGE_KEY) || DEFAULT_DATA
-  }
-  
-  // Try to read from filesystem
   try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, "utf-8")
-      return JSON.parse(data)
+    initializeStorage()
+    
+    const isReadOnly = isReadOnlyFilesystem()
+    
+    if (isReadOnly || globalStorage.has(STORAGE_KEY)) {
+      // Use in-memory storage
+      const data = globalStorage.get(STORAGE_KEY)
+      // Ensure we always return a valid object
+      if (data && typeof data === 'object' && Array.isArray(data.rooms)) {
+        return data
+      }
+      // If data is invalid, reset to default
+      const defaultData = { ...DEFAULT_DATA }
+      globalStorage.set(STORAGE_KEY, defaultData)
+      return defaultData
     }
-  } catch (error) {
-    console.warn("[Storage] Filesystem read failed, using in-memory storage:", error)
+    
+    // Try to read from filesystem
+    try {
+      if (fs.existsSync(DATA_FILE)) {
+        const fileData = fs.readFileSync(DATA_FILE, "utf-8")
+        const parsed = JSON.parse(fileData)
+        // Validate parsed data
+        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.rooms)) {
+          return parsed
+        }
+        // Invalid data, use default
+        console.warn("[Storage] Invalid data in file, using default")
+      }
+    } catch (error) {
+      console.warn("[Storage] Filesystem read failed, using in-memory storage:", error)
+    }
+    
+    // Fallback to in-memory storage with default data
     if (!globalStorage.has(STORAGE_KEY)) {
       globalStorage.set(STORAGE_KEY, { ...DEFAULT_DATA })
     }
-    return globalStorage.get(STORAGE_KEY) || DEFAULT_DATA
+    return globalStorage.get(STORAGE_KEY) || { ...DEFAULT_DATA }
+  } catch (error) {
+    console.error("[Storage] Critical error in readData:", error)
+    // Last resort: return default data
+    return { ...DEFAULT_DATA }
   }
-  
-  return DEFAULT_DATA
 }
 
 // Write data

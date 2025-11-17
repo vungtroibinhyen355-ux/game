@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import AdminDashboard from "@/components/admin-dashboard"
 import PlayerLobby from "@/components/player-lobby"
 import GameBoard from "@/components/game-board"
@@ -89,45 +89,90 @@ export default function Home() {
     loadData()
   }, [])
 
+  // Use refs to avoid infinite loop in useEffect
+  const currentRoomRef = useRef(currentRoom)
+  const appModeRef = useRef(appMode)
+  const playerTeamRef = useRef(playerTeam)
+  
+  // Update refs when state changes
   useEffect(() => {
+    currentRoomRef.current = currentRoom
+  }, [currentRoom])
+  
+  useEffect(() => {
+    appModeRef.current = appMode
+  }, [appMode])
+  
+  useEffect(() => {
+    playerTeamRef.current = playerTeam
+  }, [playerTeam])
+
+  useEffect(() => {
+    let isMounted = true
+    
     const interval = setInterval(async () => {
+      if (!isMounted) return
+      
       try {
         const roomsRes = await fetch("/api/rooms")
+        if (!roomsRes.ok) {
+          console.error("[v0] Failed to fetch rooms:", roomsRes.status)
+          return
+        }
+        
         const parsedRooms = await roomsRes.json()
-        if (Array.isArray(parsedRooms)) {
-          setRooms(parsedRooms)
-          
-          // Update current room if in waiting or game mode
-          if (currentRoom) {
-            const updatedRoom = parsedRooms.find((r: any) => r.id === currentRoom.id)
-            if (updatedRoom) {
+        if (!Array.isArray(parsedRooms)) {
+          console.error("[v0] Invalid rooms data format")
+          return
+        }
+        
+        setRooms(parsedRooms)
+        
+        // Update current room if in waiting or game mode
+        const currentRoomValue = currentRoomRef.current
+        const appModeValue = appModeRef.current
+        const playerTeamValue = playerTeamRef.current
+        
+        if (currentRoomValue) {
+          const updatedRoom = parsedRooms.find((r: any) => r.id === currentRoomValue.id)
+          if (updatedRoom) {
+            // Only update if room data actually changed
+            const roomChanged = JSON.stringify(updatedRoom) !== JSON.stringify(currentRoomValue)
+            if (roomChanged) {
               setCurrentRoom(updatedRoom)
-              
-              // Kiểm tra xem người chơi còn trong teams không (có thể bị xóa khi dừng game)
-              const playerStillInRoom = (updatedRoom.teams || []).some((t: any) => {
-                const teamName = typeof t === "string" ? t : t.name
-                return teamName === playerTeam
-              })
-              
-              // Nếu người chơi không còn trong room (bị xóa khi dừng game), quay về player lobby
-              if (!playerStillInRoom && playerTeam && (appMode === "waiting" || appMode === "game")) {
-                // Xóa localStorage
-                localStorage.removeItem(`player_room_${updatedRoom.id}`)
-                setAppMode("player")
-                setCurrentRoom(null)
-                setPlayerTeam("")
-                return
-              }
-              
-              // Nếu game đã dừng và đang ở game mode, quay về waiting room
-              if (!updatedRoom.gameStarted && appMode === "game") {
-                setAppMode("waiting")
-              }
-              
-              // Nếu game started và đang ở waiting mode, chuyển sang game mode
-              if (updatedRoom.gameStarted && appMode === "waiting") {
-                setAppMode("game")
-              }
+            }
+            
+            // Kiểm tra xem người chơi còn trong teams không (có thể bị xóa khi dừng game)
+            const playerStillInRoom = (updatedRoom.teams || []).some((t: any) => {
+              const teamName = typeof t === "string" ? t : t.name
+              return teamName === playerTeamValue
+            })
+            
+            // Nếu người chơi không còn trong room (bị xóa khi dừng game), quay về player lobby
+            if (!playerStillInRoom && playerTeamValue && (appModeValue === "waiting" || appModeValue === "game")) {
+              // Xóa localStorage
+              localStorage.removeItem(`player_room_${updatedRoom.id}`)
+              setAppMode("player")
+              setCurrentRoom(null)
+              setPlayerTeam("")
+              return
+            }
+            
+            // Nếu game đã dừng và đang ở game mode, quay về waiting room
+            if (!updatedRoom.gameStarted && appModeValue === "game") {
+              setAppMode("waiting")
+            }
+            
+            // Nếu game started và đang ở waiting mode, chuyển sang game mode
+            if (updatedRoom.gameStarted && appModeValue === "waiting") {
+              setAppMode("game")
+            }
+          } else {
+            // Room không còn tồn tại
+            if (appModeValue === "waiting" || appModeValue === "game") {
+              setAppMode("player")
+              setCurrentRoom(null)
+              setPlayerTeam("")
             }
           }
         }
@@ -135,8 +180,12 @@ export default function Home() {
         console.error("[v0] Failed to load rooms:", e)
       }
     }, 1000)
-    return () => clearInterval(interval)
-  }, [currentRoom, appMode])
+    
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
+  }, []) // Empty dependencies - chỉ chạy một lần khi mount
   
   // Listen for game started event
   useEffect(() => {
