@@ -29,6 +29,23 @@ export default function RoomDetailPage() {
     const loadRoom = async () => {
       if (!isMounted) return
       
+      // Load từ cache trước để hiển thị ngay
+      const cachedRooms = localStorage.getItem("quiz_rooms_cache")
+      if (cachedRooms && isMounted) {
+        try {
+          const cached = JSON.parse(cachedRooms)
+          if (Array.isArray(cached.rooms)) {
+            const cachedRoom = cached.rooms.find((r: any) => r.id === roomId)
+            if (cachedRoom) {
+              setRoom(cachedRoom)
+              setLoading(false)
+            }
+          }
+        } catch (e) {
+          console.warn("[RoomDetail] Failed to parse cached rooms:", e)
+        }
+      }
+      
       try {
         const roomsRes = await fetch("/api/rooms")
         if (!roomsRes.ok) {
@@ -40,6 +57,11 @@ export default function RoomDetailPage() {
         if (foundRoom && isMounted) {
           setRoom(foundRoom)
           setLoading(false)
+          // Cache rooms để dùng khi reload
+          localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+            rooms: allRooms, 
+            timestamp: Date.now() 
+          }))
         } else if (!foundRoom && isMounted) {
           // Room not found, redirect back
           router.push("/admin")
@@ -49,6 +71,7 @@ export default function RoomDetailPage() {
         if (isMounted) {
           setLoading(false)
         }
+        // Nếu API fail, giữ nguyên cached room đã load ở trên
       }
     }
 
@@ -91,6 +114,11 @@ export default function RoomDetailPage() {
       }
       
       setRoom(updatedRoom)
+      // Cache rooms để dùng khi reload
+      localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+        rooms: updatedRooms, 
+        timestamp: Date.now() 
+      }))
     } catch (e: any) {
       console.error("[RoomDetail] Failed to update room:", e)
       alert(e?.message || "Không thể cập nhật phòng. Vui lòng thử lại.")

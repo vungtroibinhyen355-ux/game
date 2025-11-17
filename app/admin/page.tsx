@@ -21,6 +21,19 @@ export default function AdminPage() {
     const loadRooms = async () => {
       if (!isMounted) return
       
+      // Load từ cache trước để hiển thị ngay
+      const cachedRooms = localStorage.getItem("quiz_rooms_cache")
+      if (cachedRooms && isMounted) {
+        try {
+          const cached = JSON.parse(cachedRooms)
+          if (Array.isArray(cached.rooms)) {
+            setRooms(cached.rooms)
+          }
+        } catch (e) {
+          console.warn("[Admin] Failed to parse cached rooms:", e)
+        }
+      }
+      
       try {
         const roomsRes = await fetch("/api/rooms")
         if (!roomsRes.ok) {
@@ -29,9 +42,15 @@ export default function AdminPage() {
         const parsedRooms = await roomsRes.json()
         if (Array.isArray(parsedRooms) && isMounted) {
           setRooms(parsedRooms)
+          // Cache rooms để dùng khi reload
+          localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+            rooms: parsedRooms, 
+            timestamp: Date.now() 
+          }))
         }
       } catch (e) {
         console.error("[Admin] Failed to load rooms:", e)
+        // Nếu API fail, giữ nguyên cached data đã load ở trên
       }
     }
     
@@ -87,6 +106,11 @@ export default function AdminPage() {
       
       // Update local state immediately - no need to poll right away
       setRooms(updatedRooms)
+      // Cache rooms để dùng khi reload
+      localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+        rooms: updatedRooms, 
+        timestamp: Date.now() 
+      }))
     } catch (e: any) {
       console.error("[Admin] Failed to create room:", e)
       alert(e?.message || "Không thể tạo phòng. Vui lòng thử lại.")
@@ -113,6 +137,11 @@ export default function AdminPage() {
       }
       
       setRooms(updatedRooms)
+      // Cache rooms để dùng khi reload
+      localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+        rooms: updatedRooms, 
+        timestamp: Date.now() 
+      }))
     } catch (e: any) {
       console.error("[Admin] Failed to delete room:", e)
       alert(e?.message || "Không thể xóa phòng. Vui lòng thử lại.")
@@ -139,6 +168,11 @@ export default function AdminPage() {
       }
       
       setRooms(updatedRooms)
+      // Cache rooms để dùng khi reload
+      localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+        rooms: updatedRooms, 
+        timestamp: Date.now() 
+      }))
     } catch (e: any) {
       console.error("[Admin] Failed to update room:", e)
       alert(e?.message || "Không thể cập nhật phòng. Vui lòng thử lại.")

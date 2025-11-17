@@ -21,6 +21,22 @@ export default function Home() {
         const urlParams = new URLSearchParams(window.location.search)
         const roomIdFromURL = urlParams.get("roomId")
         
+        // Load rooms từ localStorage cache trước (để hiển thị ngay)
+        const cachedRooms = localStorage.getItem("quiz_rooms_cache")
+        let parsedRooms: any[] = []
+        
+        if (cachedRooms) {
+          try {
+            const cached = JSON.parse(cachedRooms)
+            if (Array.isArray(cached.rooms)) {
+              parsedRooms = cached.rooms
+              setRooms(parsedRooms) // Hiển thị cached data ngay
+            }
+          } catch (e) {
+            console.warn("[v0] Failed to parse cached rooms:", e)
+          }
+        }
+        
         // Nếu có roomId trong URL, BẮT BUỘC vào player mode
         // Không cho phép login admin khi có roomId trong URL
         if (roomIdFromURL) {
@@ -31,11 +47,25 @@ export default function Home() {
           const newUrl = window.location.pathname
           window.history.replaceState({}, '', newUrl)
           
-          // Load rooms from JSON
-          const roomsRes = await fetch("/api/rooms")
-          const parsedRooms = await roomsRes.json()
-          if (Array.isArray(parsedRooms)) {
-            setRooms(parsedRooms)
+          // Load rooms from API và sync với cache
+          try {
+            const roomsRes = await fetch("/api/rooms")
+            const apiRooms = await roomsRes.json()
+            if (Array.isArray(apiRooms)) {
+              parsedRooms = apiRooms
+              setRooms(apiRooms)
+              // Cache rooms để dùng khi reload
+              localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+                rooms: apiRooms, 
+                timestamp: Date.now() 
+              }))
+            }
+          } catch (e) {
+            console.error("[v0] Failed to fetch rooms from API:", e)
+            // Nếu API fail, dùng cached data nếu có
+            if (parsedRooms.length === 0) {
+              alert("Không thể kết nối server. Vui lòng thử lại.")
+            }
           }
           
           // Check if room exists
@@ -95,11 +125,24 @@ export default function Home() {
           }
         }
 
-        // Load rooms from JSON
-        const roomsRes = await fetch("/api/rooms")
-        const parsedRooms = await roomsRes.json()
-        if (Array.isArray(parsedRooms)) {
-          setRooms(parsedRooms)
+        // Load rooms from API và sync với cache
+        try {
+          const roomsRes = await fetch("/api/rooms")
+          const apiRooms = await roomsRes.json()
+          if (Array.isArray(apiRooms)) {
+            setRooms(apiRooms)
+            // Cache rooms để dùng khi reload
+            localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+              rooms: apiRooms, 
+              timestamp: Date.now() 
+            }))
+          }
+        } catch (e) {
+          console.error("[v0] Failed to load rooms:", e)
+          // Nếu API fail và có cached data, dùng cached data
+          if (parsedRooms.length > 0) {
+            console.log("[v0] Using cached rooms data")
+          }
         }
       } catch (e) {
         console.error("[v0] Failed to load data:", e)
@@ -160,6 +203,11 @@ export default function Home() {
         }
         
         setRooms(parsedRooms)
+        // Cache rooms để dùng khi reload
+        localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+          rooms: parsedRooms, 
+          timestamp: Date.now() 
+        }))
         
         // Update current room if in waiting or game mode
         const currentRoomValue = currentRoomRef.current
@@ -305,6 +353,11 @@ export default function Home() {
       // Update local state immediately - no need to poll right away
       setRooms(updatedRooms)
       setCurrentRoom(newRoom)
+      // Cache rooms để dùng khi reload
+      localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+        rooms: updatedRooms, 
+        timestamp: Date.now() 
+      }))
     } catch (e: any) {
       console.error("[v0] Failed to create room:", e)
       const errorMsg = e?.message || "Không thể tạo phòng. Vui lòng thử lại."
@@ -325,6 +378,11 @@ export default function Home() {
       })
       
       setRooms(updatedRooms)
+      // Cache rooms để dùng khi reload
+      localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+        rooms: updatedRooms, 
+        timestamp: Date.now() 
+      }))
     } catch (e) {
       console.error("[v0] Failed to delete room:", e)
       alert("Không thể xóa phòng. Vui lòng thử lại.")
@@ -369,6 +427,12 @@ export default function Home() {
             joinedAt: new Date().toISOString()
           }))
           
+          // Cache rooms để dùng khi reload
+          localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+            rooms: updatedRooms, 
+            timestamp: Date.now() 
+          }))
+          
           // Go to waiting room first, not directly to game
           setAppMode("waiting")
         } else {
@@ -397,6 +461,11 @@ export default function Home() {
       
       setRooms(updatedRooms)
       setCurrentRoom(updatedRoom)
+      // Cache rooms để dùng khi reload
+      localStorage.setItem("quiz_rooms_cache", JSON.stringify({ 
+        rooms: updatedRooms, 
+        timestamp: Date.now() 
+      }))
     } catch (e) {
       console.error("[v0] Failed to update room:", e)
     }
