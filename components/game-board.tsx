@@ -52,9 +52,24 @@ export default function GameBoard({ room, playerTeam, onUpdateRoom, onExit }: Ga
   const lastTriggerRef = useRef<number | null>(null)
 
   // Real-time update: Poll room data from API to get latest scores and next question trigger
-  // Only update scores, don't show ranking modal immediately
+  // Only poll when in result phase to check for nextQuestionTrigger
+  // Parent component (app/page.tsx) handles general room updates
   useEffect(() => {
+    // Only poll when in result phase to check for admin's next question trigger
+    if (gamePhase !== "result") {
+      return
+    }
+    
+    let isMounted = true
+    
     const interval = setInterval(async () => {
+      if (!isMounted) return
+      
+      // Double check we're still in result phase
+      if (gamePhase !== "result") {
+        return
+      }
+      
       try {
         const roomsRes = await fetch("/api/rooms")
         const allRooms = await roomsRes.json()
@@ -63,8 +78,7 @@ export default function GameBoard({ room, playerTeam, onUpdateRoom, onExit }: Ga
         if (updatedRoom) {
           // Check for next question trigger from admin
           if (updatedRoom.nextQuestionTrigger && 
-              updatedRoom.nextQuestionTrigger !== lastTriggerRef.current &&
-              gamePhase === "result") {
+              updatedRoom.nextQuestionTrigger !== lastTriggerRef.current) {
             // Admin clicked next question button
             lastTriggerRef.current = updatedRoom.nextQuestionTrigger
             moveToNextQuestion()
@@ -74,6 +88,9 @@ export default function GameBoard({ room, playerTeam, onUpdateRoom, onExit }: Ga
             onUpdateRoom(resetRoom)
             return
           }
+          
+          // Update local room with latest data (scores are handled by parent)
+          setLocalRoom(updatedRoom)
           
           if (updatedRoom.teams) {
             // Include ALL teams (both real and virtual teams) in scores
@@ -131,10 +148,13 @@ export default function GameBoard({ room, playerTeam, onUpdateRoom, onExit }: Ga
       } catch (e) {
         console.error("[v0] Failed to fetch room updates:", e)
       }
-    }, 500) // Poll every 500ms for better realtime response
+    }, 2000) // Tăng interval lên 2 giây để giảm số lần gọi API
 
-    return () => clearInterval(interval)
-  }, [room.id, scores, gamePhase])
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
+  }, [room.id, gamePhase, currentQuestion])
 
   // Detect when game starts and begin countdown
   useEffect(() => {

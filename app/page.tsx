@@ -42,44 +42,53 @@ export default function Home() {
         const urlParams = new URLSearchParams(window.location.search)
         const roomIdFromURL = urlParams.get("roomId")
         
-        if (roomIdFromURL && !savedAuth) {
-          // Check if room exists
-          const targetRoom = parsedRooms.find((r: any) => r.id === roomIdFromURL)
-          if (targetRoom) {
-            // Kiểm tra xem người chơi đã join room chưa từ localStorage
-            const savedPlayerInfo = localStorage.getItem(`player_room_${roomIdFromURL}`)
-            if (savedPlayerInfo) {
-              try {
-                const playerInfo = JSON.parse(savedPlayerInfo)
-                const teamName = playerInfo.teamName
-                
-                // Kiểm tra xem team còn trong room không (có thể bị xóa khi dừng game)
-                const playerStillInRoom = (targetRoom.teams || []).some((t: any) => {
-                  const name = typeof t === "string" ? t : t.name
-                  return name === teamName
-                })
-                
-                if (playerStillInRoom) {
-                  // Người chơi vẫn còn trong room, vào waiting room
-                  setCurrentRoom(targetRoom)
-                  setPlayerTeam(teamName)
-                  // Chỉ vào game nếu game đã bắt đầu, nếu không thì vào waiting room
-                  setAppMode(targetRoom.gameStarted ? "game" : "waiting")
-                } else {
-                  // Người chơi không còn trong room (bị xóa khi dừng game), xóa localStorage và vào player lobby
-                  localStorage.removeItem(`player_room_${roomIdFromURL}`)
+        // Nếu có roomId trong URL và KHÔNG phải admin (không có savedAuth)
+        // Thì vào player mode để join room
+        if (roomIdFromURL) {
+          if (!savedAuth) {
+            // Không phải admin, vào player mode
+            // Check if room exists
+            const targetRoom = parsedRooms.find((r: any) => r.id === roomIdFromURL)
+            if (targetRoom) {
+              // Kiểm tra xem người chơi đã join room chưa từ localStorage
+              const savedPlayerInfo = localStorage.getItem(`player_room_${roomIdFromURL}`)
+              if (savedPlayerInfo) {
+                try {
+                  const playerInfo = JSON.parse(savedPlayerInfo)
+                  const teamName = playerInfo.teamName
+                  
+                  // Kiểm tra xem team còn trong room không (có thể bị xóa khi dừng game)
+                  const playerStillInRoom = (targetRoom.teams || []).some((t: any) => {
+                    const name = typeof t === "string" ? t : t.name
+                    return name === teamName
+                  })
+                  
+                  if (playerStillInRoom) {
+                    // Người chơi vẫn còn trong room, vào waiting room
+                    setCurrentRoom(targetRoom)
+                    setPlayerTeam(teamName)
+                    // Chỉ vào game nếu game đã bắt đầu, nếu không thì vào waiting room
+                    setAppMode(targetRoom.gameStarted ? "game" : "waiting")
+                  } else {
+                    // Người chơi không còn trong room (bị xóa khi dừng game), xóa localStorage và vào player lobby
+                    localStorage.removeItem(`player_room_${roomIdFromURL}`)
+                    setAppMode("player")
+                  }
+                } catch (e) {
+                  // Invalid localStorage data, vào player lobby
                   setAppMode("player")
                 }
-              } catch (e) {
-                // Invalid localStorage data, vào player lobby
+              } else {
+                // Chưa join, vào player lobby để join
                 setAppMode("player")
               }
             } else {
-              // Chưa join, vào player lobby để join
+              // Room không tồn tại, vào player lobby
               setAppMode("player")
             }
           } else {
-            setAppMode("player")
+            // Admin có roomId trong URL - giữ nguyên admin mode, không redirect
+            // Admin sẽ tự navigate đến room detail page nếu cần
           }
         }
       } catch (e) {
@@ -107,11 +116,25 @@ export default function Home() {
     playerTeamRef.current = playerTeam
   }, [playerTeam])
 
+  // Only poll API when in waiting or game mode
   useEffect(() => {
+    const appModeValue = appModeRef.current
+    
+    // Only start polling if in waiting or game mode
+    if (appMode !== "waiting" && appMode !== "game") {
+      return
+    }
+    
     let isMounted = true
     
     const interval = setInterval(async () => {
       if (!isMounted) return
+      
+      // Double check mode hasn't changed
+      const currentMode = appModeRef.current
+      if (currentMode !== "waiting" && currentMode !== "game") {
+        return
+      }
       
       try {
         const roomsRes = await fetch("/api/rooms")
@@ -179,13 +202,13 @@ export default function Home() {
       } catch (e) {
         console.error("[v0] Failed to load rooms:", e)
       }
-    }, 1000)
+    }, 2000) // Tăng interval lên 2 giây để giảm số lần gọi
     
     return () => {
       isMounted = false
       clearInterval(interval)
     }
-  }, []) // Empty dependencies - chỉ chạy một lần khi mount
+  }, [appMode]) // Chỉ chạy lại khi appMode thay đổi
   
   // Listen for game started event
   useEffect(() => {

@@ -14,23 +14,10 @@ interface WaitingRoomProps {
 export default function WaitingRoom({ room, playerTeam, onExit }: WaitingRoomProps) {
   const [localRoom, setLocalRoom] = useState(room)
 
-  // Poll for room updates
+  // Update local room when prop changes (parent component handles polling)
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const roomsRes = await fetch("/api/rooms")
-        const allRooms = await roomsRes.json()
-        const updatedRoom = allRooms.find((r: any) => r.id === room.id)
-        if (updatedRoom) {
-          setLocalRoom(updatedRoom)
-        }
-      } catch (e) {
-        console.error("[v0] Failed to fetch room updates:", e)
-      }
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [room.id])
+    setLocalRoom(room)
+  }, [room])
 
   const teams = localRoom?.teams || []
   const gameStarted = localRoom?.gameStarted || false
