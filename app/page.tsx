@@ -13,11 +13,74 @@ export default function Home() {
   const [rooms, setRooms] = useState<any[]>([])
   const [currentRoom, setCurrentRoom] = useState<any>(null)
   const [playerTeam, setPlayerTeam] = useState<string>("")
+  const [hasRoomIdInURL, setHasRoomIdInURL] = useState(false) // Track if user came from room link
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Load session from localStorage
+        const urlParams = new URLSearchParams(window.location.search)
+        const roomIdFromURL = urlParams.get("roomId")
+        
+        // Nếu có roomId trong URL, BẮT BUỘC vào player mode
+        // Không cho phép login admin khi có roomId trong URL
+        if (roomIdFromURL) {
+          // Đánh dấu rằng user đến từ room link
+          setHasRoomIdInURL(true)
+          
+          // Xóa roomId khỏi URL để tránh confusion
+          const newUrl = window.location.pathname
+          window.history.replaceState({}, '', newUrl)
+          
+          // Load rooms from JSON
+          const roomsRes = await fetch("/api/rooms")
+          const parsedRooms = await roomsRes.json()
+          if (Array.isArray(parsedRooms)) {
+            setRooms(parsedRooms)
+          }
+          
+          // Check if room exists
+          const targetRoom = parsedRooms.find((r: any) => r.id === roomIdFromURL)
+          if (targetRoom) {
+            // Kiểm tra xem người chơi đã join room chưa từ localStorage
+            const savedPlayerInfo = localStorage.getItem(`player_room_${roomIdFromURL}`)
+            if (savedPlayerInfo) {
+              try {
+                const playerInfo = JSON.parse(savedPlayerInfo)
+                const teamName = playerInfo.teamName
+                
+                // Kiểm tra xem team còn trong room không (có thể bị xóa khi dừng game)
+                const playerStillInRoom = (targetRoom.teams || []).some((t: any) => {
+                  const name = typeof t === "string" ? t : t.name
+                  return name === teamName
+                })
+                
+                if (playerStillInRoom) {
+                  // Người chơi vẫn còn trong room, vào waiting room
+                  setCurrentRoom(targetRoom)
+                  setPlayerTeam(teamName)
+                  // Chỉ vào game nếu game đã bắt đầu, nếu không thì vào waiting room
+                  setAppMode(targetRoom.gameStarted ? "game" : "waiting")
+                } else {
+                  // Người chơi không còn trong room (bị xóa khi dừng game), xóa localStorage và vào player lobby
+                  localStorage.removeItem(`player_room_${roomIdFromURL}`)
+                  setAppMode("player")
+                }
+              } catch (e) {
+                // Invalid localStorage data, vào player lobby
+                setAppMode("player")
+              }
+            } else {
+              // Chưa join, vào player lobby để join
+              setAppMode("player")
+            }
+          } else {
+            // Room không tồn tại, vào player lobby
+            setAppMode("player")
+          }
+          return // Dừng ở đây, không load admin session
+        }
+        
+        // Chỉ load admin session khi KHÔNG có roomId trong URL
         const savedAuth = localStorage.getItem("teacher_session")
         if (savedAuth) {
           try {
@@ -37,59 +100,6 @@ export default function Home() {
         const parsedRooms = await roomsRes.json()
         if (Array.isArray(parsedRooms)) {
           setRooms(parsedRooms)
-        }
-
-        const urlParams = new URLSearchParams(window.location.search)
-        const roomIdFromURL = urlParams.get("roomId")
-        
-        // Nếu có roomId trong URL và KHÔNG phải admin (không có savedAuth)
-        // Thì vào player mode để join room
-        if (roomIdFromURL) {
-          if (!savedAuth) {
-            // Không phải admin, vào player mode
-            // Check if room exists
-            const targetRoom = parsedRooms.find((r: any) => r.id === roomIdFromURL)
-            if (targetRoom) {
-              // Kiểm tra xem người chơi đã join room chưa từ localStorage
-              const savedPlayerInfo = localStorage.getItem(`player_room_${roomIdFromURL}`)
-              if (savedPlayerInfo) {
-                try {
-                  const playerInfo = JSON.parse(savedPlayerInfo)
-                  const teamName = playerInfo.teamName
-                  
-                  // Kiểm tra xem team còn trong room không (có thể bị xóa khi dừng game)
-                  const playerStillInRoom = (targetRoom.teams || []).some((t: any) => {
-                    const name = typeof t === "string" ? t : t.name
-                    return name === teamName
-                  })
-                  
-                  if (playerStillInRoom) {
-                    // Người chơi vẫn còn trong room, vào waiting room
-                    setCurrentRoom(targetRoom)
-                    setPlayerTeam(teamName)
-                    // Chỉ vào game nếu game đã bắt đầu, nếu không thì vào waiting room
-                    setAppMode(targetRoom.gameStarted ? "game" : "waiting")
-                  } else {
-                    // Người chơi không còn trong room (bị xóa khi dừng game), xóa localStorage và vào player lobby
-                    localStorage.removeItem(`player_room_${roomIdFromURL}`)
-                    setAppMode("player")
-                  }
-                } catch (e) {
-                  // Invalid localStorage data, vào player lobby
-                  setAppMode("player")
-                }
-              } else {
-                // Chưa join, vào player lobby để join
-                setAppMode("player")
-              }
-            } else {
-              // Room không tồn tại, vào player lobby
-              setAppMode("player")
-            }
-          } else {
-            // Admin có roomId trong URL - giữ nguyên admin mode, không redirect
-            // Admin sẽ tự navigate đến room detail page nếu cần
-          }
         }
       } catch (e) {
         console.error("[v0] Failed to load data:", e)
@@ -223,6 +233,12 @@ export default function Home() {
   }, [appMode, currentRoom])
 
   const handleSelectRole = (role: "teacher" | "student") => {
+    // Nếu user đến từ room link, không cho phép chọn role teacher
+    if (hasRoomIdInURL && role === "teacher") {
+      alert("Bạn không thể đăng nhập admin khi đang tham gia phòng quiz. Vui lòng truy cập trang chủ (không có roomId) để đăng nhập.")
+      return
+    }
+    
     if (role === "teacher") {
       setAppMode("login")
     } else {
@@ -231,6 +247,13 @@ export default function Home() {
   }
 
   const handleLogin = () => {
+    // Nếu user đến từ room link, không cho phép login admin
+    if (hasRoomIdInURL) {
+      alert("Bạn không thể đăng nhập admin khi đang tham gia phòng quiz. Vui lòng truy cập trang chủ (không có roomId) để đăng nhập.")
+      setAppMode("player")
+      return
+    }
+    
     setIsAuthenticated(true)
     setAppMode("admin")
     // Save session to localStorage instead of JSON
@@ -279,6 +302,7 @@ export default function Home() {
         throw new Error(result.error || "Failed to save room")
       }
       
+      // Update local state immediately - no need to poll right away
       setRooms(updatedRooms)
       setCurrentRoom(newRoom)
     } catch (e: any) {
@@ -386,6 +410,15 @@ export default function Home() {
   }
 
   if (appMode === "role") {
+    // Nếu user đến từ room link, tự động vào player mode, không hiển thị role selection
+    if (hasRoomIdInURL) {
+      // Đã được xử lý trong useEffect, nhưng để đảm bảo, set player mode
+      if (appMode === "role") {
+        setAppMode("player")
+      }
+      return null
+    }
+    
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary via-background to-secondary flex items-center justify-center p-4">
         <div className="w-full max-w-md">
@@ -423,6 +456,11 @@ export default function Home() {
   }
 
   if (appMode === "login") {
+    // Nếu user đến từ room link, không cho phép vào login page
+    if (hasRoomIdInURL) {
+      setAppMode("player")
+      return null
+    }
     return <LoginPage onLogin={handleLogin} onBack={() => setAppMode("role")} />
   }
 

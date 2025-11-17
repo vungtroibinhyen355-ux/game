@@ -24,30 +24,43 @@ export default function RoomDetailPage() {
 
   // Real-time polling for room updates
   useEffect(() => {
+    let isMounted = true
+    
     const loadRoom = async () => {
+      if (!isMounted) return
+      
       try {
         const roomsRes = await fetch("/api/rooms")
+        if (!roomsRes.ok) {
+          return
+        }
         const allRooms = await roomsRes.json()
         const foundRoom = allRooms.find((r: any) => r.id === roomId)
         
-        if (foundRoom) {
+        if (foundRoom && isMounted) {
           setRoom(foundRoom)
           setLoading(false)
-        } else {
+        } else if (!foundRoom && isMounted) {
           // Room not found, redirect back
           router.push("/admin")
         }
       } catch (e) {
         console.error("[RoomDetail] Failed to load room:", e)
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     loadRoom()
     
-    // Poll for updates every second
-    const interval = setInterval(loadRoom, 1000)
-    return () => clearInterval(interval)
+    // Poll for updates every 2 seconds instead of 1 second to reduce API calls
+    const interval = setInterval(loadRoom, 2000)
+    
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
   }, [roomId, router])
 
   const handleUpdateRoom = async (updatedRoom: any) => {

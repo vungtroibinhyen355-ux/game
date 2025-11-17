@@ -16,21 +16,35 @@ export default function AdminPage() {
       return
     }
 
+    let isMounted = true
+
     const loadRooms = async () => {
+      if (!isMounted) return
+      
       try {
         const roomsRes = await fetch("/api/rooms")
+        if (!roomsRes.ok) {
+          return
+        }
         const parsedRooms = await roomsRes.json()
-        if (Array.isArray(parsedRooms)) {
+        if (Array.isArray(parsedRooms) && isMounted) {
           setRooms(parsedRooms)
         }
       } catch (e) {
         console.error("[Admin] Failed to load rooms:", e)
       }
     }
+    
+    // Load immediately
     loadRooms()
     
-    const interval = setInterval(loadRooms, 1000)
-    return () => clearInterval(interval)
+    // Poll every 3 seconds instead of 1 second to reduce API calls
+    const interval = setInterval(loadRooms, 3000)
+    
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
   }, [router])
 
   const handleCreateRoom = async (roomData: any) => {
@@ -71,6 +85,7 @@ export default function AdminPage() {
         throw new Error(result.error || "Failed to save room")
       }
       
+      // Update local state immediately - no need to poll right away
       setRooms(updatedRooms)
     } catch (e: any) {
       console.error("[Admin] Failed to create room:", e)

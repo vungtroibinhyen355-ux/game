@@ -17,26 +17,9 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ rooms, onCreateRoom, onDeleteRoom, onUpdateRoom, onLogout, onBack }: AdminDashboardProps) {
   const router = useRouter()
   const [showRoomCreator, setShowRoomCreator] = useState(false)
-  const [localRooms, setLocalRooms] = useState(rooms)
-
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const roomsRes = await fetch("/api/rooms")
-        const parsedRooms = await roomsRes.json()
-        if (Array.isArray(parsedRooms)) {
-          setLocalRooms(parsedRooms)
-        }
-      } catch (e) {
-        console.error("[v0] Failed to load rooms:", e)
-      }
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [])
-
-  useEffect(() => {
-    setLocalRooms(rooms)
-  }, [rooms])
+  
+  // Use rooms directly from props - parent component handles polling
+  const localRooms = rooms
 
   const handleDeleteRoom = (roomId: string) => {
     if (confirm("Bạn có chắc muốn xóa phòng này?")) {

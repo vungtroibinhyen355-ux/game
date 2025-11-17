@@ -50,6 +50,12 @@ export default function GameBoard({ room, playerTeam, onUpdateRoom, onExit }: Ga
 
   // Track last processed nextQuestionTrigger
   const lastTriggerRef = useRef<number | null>(null)
+  const gamePhaseRef = useRef(gamePhase)
+  
+  // Update ref when gamePhase changes
+  useEffect(() => {
+    gamePhaseRef.current = gamePhase
+  }, [gamePhase])
 
   // Real-time update: Poll room data from API to get latest scores and next question trigger
   // Only poll when in result phase to check for nextQuestionTrigger
@@ -65,8 +71,8 @@ export default function GameBoard({ room, playerTeam, onUpdateRoom, onExit }: Ga
     const interval = setInterval(async () => {
       if (!isMounted) return
       
-      // Double check we're still in result phase
-      if (gamePhase !== "result") {
+      // Double check we're still in result phase using ref
+      if (gamePhaseRef.current !== "result") {
         return
       }
       
