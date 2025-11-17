@@ -185,20 +185,34 @@ export default function Home() {
     
     try {
       const roomsRes = await fetch("/api/rooms")
+      if (!roomsRes.ok) {
+        throw new Error(`HTTP error! status: ${roomsRes.status}`)
+      }
       const allRooms = await roomsRes.json()
       const updatedRooms = [...allRooms, newRoom]
       
-      await fetch("/api/rooms", {
+      const saveRes = await fetch("/api/rooms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedRooms),
       })
       
+      if (!saveRes.ok) {
+        const errorData = await saveRes.json().catch(() => ({}))
+        throw new Error(errorData.error || `Failed to save: ${saveRes.status}`)
+      }
+      
+      const result = await saveRes.json()
+      if (!result.success) {
+        throw new Error(result.error || "Failed to save room")
+      }
+      
       setRooms(updatedRooms)
       setCurrentRoom(newRoom)
-    } catch (e) {
+    } catch (e: any) {
       console.error("[v0] Failed to create room:", e)
-      alert("Không thể tạo phòng. Vui lòng thử lại.")
+      const errorMsg = e?.message || "Không thể tạo phòng. Vui lòng thử lại."
+      alert(errorMsg)
     }
   }
 
